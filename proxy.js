@@ -6,6 +6,7 @@ var httpProxy = require('http-proxy');
 
 var PORT = 60126;
 var REGISTRY_URL = 'https://registry.hub.docker.com';
+var NO_AUTH = ['/v1/_ping', '/v1/users'];
 
 var httpProxy = require('http-proxy');
 var http = require('http');
@@ -24,24 +25,29 @@ var credentials = {
 };
 
 // Docker Authentication proxy string
-var authentication = new Buffer(JSON.stringify(credentials)).toString('base64');
+var authentication = 'Basic ' + new Buffer(
+  credentials.username + ':' + credentials.password
+).toString('base64');
 
 var server = http.createServer(function(req, res) {
-  console.log('request: ', req.url, req.headers);
+  console.log(req.url, req.headers);
 
   // The whole point of this proxy is to simulate credentials without any fancy
   // setups or pushing of images locally... So we only implement the credential
   // checking part of the proxy.
-  if (req.headers['x-registry-auth'] !== authentication) {
-    console.error('Unauthorized request', req.url, req.headers);
-    //res.writeHead(403);
-    //res.end();
-    //return;
+  if (
+    NO_AUTH.indexOf(req.url) !== 0 && // don't authenticate on ping
+    req.headers['authorization'] !== authentication
+  ) {
+    console.error('Unauthorized request', authentication, req.url, req.headers);
+    res.writeHead(403);
+    res.end();
+    return;
   }
 
   // Remove headers specific to this proxy...
   delete req.headers['host'];
-  delete req.headers['x-registry-auth'];
+  delete req.headers['authorization'];
 
   // Issue the proxy request to docker hub...
   proxy.web(req, res, { target: REGISTRY_URL });
